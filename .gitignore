@@ -1,0 +1,26 @@
+# R and RStudio temporary files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# R Markdown intermediate files
+*_cache/
+*_files/
+*.utf8.md
+*.knit.md
+
+# Temporary files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+~$*
+
+# R package installation files
+.Rcheck/
+.Rproj.user/
+
+# Temporary editor files
+*.swp
+*.swo

@@ -1,0 +1,2758 @@
+---
+title: "Honey manuscript"
+author: "Karl Persson"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+
+```
+
+# Setup
+
+```{r Libraries}
+
+library(tidyverse)
+library(sf)
+library(mapview) # for interactive maps
+library(RColorBrewer)
+library(colorspace) # color palettes, check them out with hcl_palettes(plot = TRUE) or divergingx_palettes(plot = TRUE)
+library(viridis)
+library(treemapify)
+library(ggmap)
+library(reshape2)
+library(ggpubr)
+library(ggbreak) # to add scale brakes in plots
+library(ggrepel) # for repulsive textual annotations
+
+
+# add family colors for plots
+fam_cols <- readRDS("family_palette_14_spectral_alpha.rds")
+
+# Custom ggplot theme
+theme_karl <- theme(
+    panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent", color = NA), # get rid of legend panel bg
+    legend.key = element_rect(fill = "transparent", colour = NA), # get rid of key legend fill
+    legend.title= element_blank(), # remove the legend title
+    legend.text=element_text(size=10), # increase the text of legend
+    axis.line = element_line(colour = "gray15", linewidth = 1), # adding a wider gray line for x and y axis
+    axis.ticks = element_line(colour = "gray15", linewidth = 1), # change the ticks to same color as line
+    axis.title.x = element_text(face="bold"), # make the x axis title bold
+    axis.title.y = element_text(face="bold"), # make the y axis title bold
+    strip.background = element_rect(fill="gray95"), # change color of strips
+    strip.text =  element_text(face="bold", size = 12), # increase the font size of group titles
+    axis.ticks.length=unit(.25, "cm"), # increase the length of the axis ticks
+    axis.text.x = element_text(face = "bold"), # make the numbers on x-axis bold
+    axis.text.y = element_text(face = "bold"), # make the numbers on y-axis bold
+    axis.title = element_text(size=14), # Increase the axis label size
+    axis.text = element_text(size=12) # Increase tick text size
+)
+
+theme_honey <- theme(
+    panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_line(colour = "grey80", linetype = "dotted", linewidth = 0.5), # add dotted major grid
+    panel.grid.minor = element_line(colour = "grey90", linetype = "dotted", linewidth = 0.2), # add dotted minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent", color = NA), # get rid of legend panel bg
+    legend.key = element_rect(fill = "transparent", colour = NA), # get rid of key legend fill
+    legend.title= element_blank(), # remove the legend title
+    legend.text=element_text(size=10), # increase the text of legend
+    axis.line = element_line(colour = "gray15", linewidth = 1), # adding a wider gray line for x and y axis
+    axis.ticks = element_line(colour = "gray15", linewidth = 1), # change the ticks to same color as line
+    axis.title.x = element_text(face="bold"), # make the x axis title bold
+    axis.title.y = element_text(face="bold"), # make the y axis title bold
+    strip.background = element_rect(fill="gray95"), # change color of strips
+    strip.text = element_text(face="bold", size = 12), # increase the font size of group titles
+    axis.ticks.length=unit(.25, "cm"), # increase the length of the axis ticks
+    axis.text.x = element_text(face = "bold"), # make the numbers on x-axis bold
+    axis.text.y = element_text(face = "bold"), # make the numbers on y-axis bold
+    axis.title = element_text(size=14), # Increase the axis label size
+    axis.text = element_text(size=12) # Increase tick text size
+)
+
+
+```
+
+# Data import and preparation
+
+```{r Data}
+
+df.species <- read.delim(file="DATA/Species_blast.tsv") # use the blast results instead of Species.tsv
+df.GPS <- read.table(file = "DATA/Beekeepers.tsv", sep = "\t", header = TRUE) 
+df.batch <- read.table(file = "DATA/Batch.tsv", sep = "\t", header = TRUE)
+df.seq <- read.table("DATA/Sequence_table.tsv", header = TRUE, sep = "\t")
+
+# merge to joint df
+df <- full_join(df.species, df.batch, by="Strain.ID") %>% 
+  full_join(., df.GPS, by="Batch.ID") %>% 
+  full_join(., df.seq, by="Strain.ID") %>% # include if sequences are desired
+  arrange(Strain.ID)
+
+# Export table
+# write.table(df, "strain_info.tsv", quote = F, row.names = F, sep = "\t")
+
+```
+
+# Strain selection
+```{r}
+
+# After some adjustments, this is the final subset. 
+# Starmerella magnoliae was added three times just to get at least one isolate per county
+strain.subset <- c(799,410,702,1431,1156,994,741,1517,791,2031,1856,278,277,385,274,2,3,231,950,913,
+                   1002,912,962,1004,1467,1854,420,865,1405,1665,1395,2364,880,765,516,1126,486,514,
+                   1133,1908,477,2093,490,488,762,775,1738,2110,2032,2162,1928,1235,1997,2096,1206,
+                   2276,687,1834,1829,2238,1827,2034,2267,462,2008,2176,431,1792,2178,976,2279,2268,
+                   1494,1266,1690,1610,2285,678,1879,436,1897,2272,2342,1202,2244,2259,109,1147,1526)
+
+
+```
+
+# Geographic distribution of honey yeast isolates
+### Fig 1D Sampling locations and categories
+
+```{r}
+
+library(ggplot2)
+library(sf)
+library(dplyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggspatial)
+library(lwgeom)
+
+# Prepare your data and count isolates by Batch.ID
+df.temp <- read.delim("DATA/Hive_sites_analysis.tsv", sep = "\t", stringsAsFactors = FALSE)
+
+# Add jitter to avoid overlapping points
+df.temp$lat <- jitter(df.temp$Latitude, factor = 1)
+df.temp$lon <- jitter(df.temp$Longitude, factor = 1)
+
+# Load all countries in Europe at a medium scale
+countries <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Filter out Sweden for special coloring
+sweden <- countries %>% filter(name == "Sweden")
+
+# Filter out all other countries except Sweden
+other_countries <- countries %>% filter(name != "Sweden")
+
+# Load lakes data and ensure valid geometries
+lakes <- ne_download(scale = "medium", type = "lakes", category = "physical", returnclass = "sf")
+lakes <- st_make_valid(lakes)
+lakes_sweden <- st_intersection(lakes, sweden)
+
+# Convert your data to an sf object
+df.temp_sf <- st_as_sf(df.temp, coords = c("longitude", "latitude"), crs = 4326)
+
+ggplot() +
+  geom_sf(data = other_countries, fill = "gray99", color = "gray87") +
+  geom_sf(data = sweden, fill = "white", color = "black") +
+  geom_sf(data = lakes_sweden, fill = "lightblue", color = NA) +
+  geom_sf(
+    data = df.temp_sf,
+    aes(fill = analysis_environment_class),
+    size = 2,
+    alpha = 0.7,
+    shape = 21,
+    color = "black"
+  ) +
+  coord_sf(xlim = c(5, 31), ylim = c(55, 71)) +
+  scale_fill_manual(
+    values = c(
+      urban_suburban = hcl.colors(14, palette = "Spectral")[2],
+      agriculture_dominated = hcl.colors(14, palette = "Spectral")[6],
+      rural_mixed = hcl.colors(14, palette = "Spectral")[10]
+    ),
+    labels = c(
+      urban_suburban = "Urban/suburban",
+      agriculture_dominated = "Agriculture-dominated",
+      rural_mixed = "Rural mixed"
+    )
+  ) +
+  theme_void() +
+  theme(legend.position = "left")
+
+ggsave(
+  "PLOTS/Fig1D_hive_sites.pdf",
+  width = 7,
+  height = 5,
+  units = "in"
+)
+
+#### Fig 1D donut chart insert
+
+df.env <- read.delim("DATA/Hive_sites_analysis.tsv", sep = "\t", stringsAsFactors = FALSE)
+
+env_colors <- c(
+  urban_suburban = hcl.colors(14, palette = "Spectral")[2],
+  agriculture_dominated = hcl.colors(14, palette = "Spectral")[6],
+  rural_mixed = hcl.colors(14, palette = "Spectral")[10]
+)
+
+env_labels <- c(
+  urban_suburban = "Urban/suburban",
+  agriculture_dominated = "Agriculture-dominated",
+  rural_mixed = "Rural mixed"
+)
+
+df.donut <- df.env %>%
+  count(analysis_environment_class) %>%
+  mutate(
+    analysis_environment_class = factor(
+      analysis_environment_class,
+      levels = c("urban_suburban", "agriculture_dominated", "rural_mixed")
+    )
+  ) %>%
+  arrange(analysis_environment_class)
+
+legend_labels <- setNames(
+  paste0(
+    env_labels[as.character(df.donut$analysis_environment_class)],
+    " (n = ",
+    df.donut$n,
+    ")"
+  ),
+  as.character(df.donut$analysis_environment_class)
+)
+
+ggplot(df.donut, aes(x = 2, y = n, fill = analysis_environment_class)) +
+  geom_col(color = "white", linewidth = 1) +
+  coord_polar(theta = "y") +
+  xlim(0.5, 2.5) +
+  scale_fill_manual(
+    values = env_colors,
+    labels = legend_labels
+  ) +
+  theme_void() +
+  theme(legend.position = "right")
+
+ggsave(
+  "PLOTS/Fig1D_hive_donut.pdf",
+  width = 7,
+  height = 5,
+  units = "in"
+)
+
+```
+
+### Fig 4A strain subset on a pie map
+
+```{r}
+
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(lwgeom)
+library(scatterpie)
+
+df.temp <- df %>%
+  filter(Strain.ID %in% strain.subset) %>%
+  filter(!is.na(Species), !Species %in% c("No significant", "")) %>%
+  tidyr::extract(Species, into = c("Family", "name"), regex = "^(\\S+)\\s+(.+)$", remove = FALSE) %>%
+  select(
+    Strain.ID, Batch.ID, Beekeeper.ID, Sample.type,
+    Latitude, Longitude, Extraction.date, Species, Family
+  ) %>%
+  filter(!is.na(Latitude), !is.na(Longitude), !is.na(Family))
+
+site_family <- df.temp %>%
+  group_by(Latitude, Longitude, Family) %>%
+  summarise(n = n(), .groups = "drop")
+
+pie_df <- site_family %>%
+  pivot_wider(
+    names_from = Family,
+    values_from = n,
+    values_fill = 0
+  )
+
+family_cols <- setdiff(names(pie_df), c("Latitude", "Longitude"))
+
+pie_df <- pie_df %>%
+  mutate(total_n = rowSums(across(all_of(family_cols))))
+
+missing_cols <- setdiff(family_cols, names(fam_cols))
+if (length(missing_cols) > 0) {
+  fam_cols <- c(fam_cols, setNames(rep("steelblue4", length(missing_cols)), missing_cols))
+}
+
+sites_sf <- st_as_sf(
+  pie_df,
+  coords = c("Longitude", "Latitude"),
+  crs = 4326
+) %>%
+  st_transform(3006)
+
+coords <- st_coordinates(sites_sf)
+pie_df$x <- coords[, 1]
+pie_df$y <- coords[, 2]
+
+pie_df$radius <- sqrt(pie_df$total_n) * 11000
+
+countries <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  st_transform(3006)
+
+sweden <- countries %>% filter(name == "Sweden")
+
+lakes_sweden <- tryCatch({
+  ne_download(
+    scale = "medium",
+    type = "lakes",
+    category = "physical",
+    returnclass = "sf"
+  ) %>%
+    st_make_valid() %>%
+    st_transform(3006) %>%
+    st_intersection(sweden)
+}, error = function(e) {
+  NULL
+})
+
+family_cols <- intersect(family_cols, names(fam_cols))
+
+p <- ggplot() +
+  geom_sf(data = sweden, fill = "white", color = "black", linewidth = 0.3) +
+  theme_void() +
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "none"
+  )
+
+if (!is.null(lakes_sweden)) {
+  p <- p + geom_sf(data = lakes_sweden, fill = "lightblue", color = NA)
+}
+
+p <- p +
+  geom_scatterpie(
+    data = pie_df,
+    aes(x = x, y = y, r = radius),
+    cols = family_cols,
+    color = "black",
+    linewidth = 0.1,
+    alpha = 0.8
+  ) +
+  coord_sf(
+    crs = st_crs(3006),
+    xlim = c(250000, 930000),
+    ylim = c(6100000, 7690000),
+    expand = FALSE
+  ) +
+  scale_fill_manual(values = fam_cols[family_cols], drop = FALSE, na.value = "steelblue4")
+
+print(p)
+
+ggsave(
+  "PLOTS/Fig4A_map_strain_subset.pdf",
+  width = 8,
+  height = 6,
+  units = "in"
+)
+
+```
+
+### Fig 3A map isolates per county
+
+```{r}
+
+library(ggplot2)
+library(sf)
+library(dplyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggspatial)
+library(lwgeom)
+library(colorspace)
+library(scales)
+
+# ---- POINT DATA PREPARATION ----
+df.temp <- df %>% 
+  filter(!Species %in% c(NA, "No significant", "")) %>%
+  select(Batch.ID, Beekeeper.ID, Sample.type, Latitude, Longitude, 
+         Bee.strain, Extraction.date, Species, Strain.ID) %>%
+  group_by(Beekeeper.ID, Latitude, Longitude) %>%
+  summarise(count = n()) %>%
+  ungroup()
+
+# Add jitter to avoid overlapping points
+df.temp$lat <- jitter(df.temp$Latitude, factor = 1)
+df.temp$lon <- jitter(df.temp$Longitude, factor = 1)
+
+# Convert to sf
+df.temp_sf <- st_as_sf(df.temp, coords = c("lon", "lat"), crs = 4326)
+
+# ---- LANDSCAPE & COUNTY DATA PREPARATION ----
+countries <- ne_countries(scale = "medium", returnclass = "sf")
+sweden <- countries %>% filter(name == "Sweden")
+other_countries <- countries %>% filter(name != "Sweden")
+
+sweden_counties <- ne_states(country = "Sweden", returnclass = "sf")
+
+# Spatial join: points to county
+df.temp_for_counties <- df %>%
+  select(Beekeeper.ID, Latitude, Longitude, Species, Strain.ID)
+
+df.temp_sf_county <- st_as_sf(df.temp_for_counties, coords = c("Longitude", "Latitude"), crs = 4326)
+df.temp_sf_with_county <- st_join(df.temp_sf_county, sweden_counties)
+
+# Count isolates per county
+county_isolate_data <- df.temp_sf_with_county %>%
+  group_by(name) %>%
+  summarise(count = n()) %>%
+  ungroup()
+
+sweden_counties_with_data <- left_join(sweden_counties, st_drop_geometry(county_isolate_data), by = "name")
+sweden_counties_with_data$count[is.na(sweden_counties_with_data$count)] <- NA  # unsampled = NA
+
+# Lakes
+lakes <- ne_download(scale = "medium", type = "lakes", category = "physical", returnclass = "sf")
+lakes <- st_make_valid(lakes)
+lakes_sweden <- st_intersection(lakes, sweden)
+
+# ---- PLOT ----
+ggplot() +
+  # geom_sf(data = other_countries, fill = "gray96", color = "gray80") +
+  geom_sf(data = sweden_counties_with_data, aes(fill = count), color = "black", size = 0.3) +
+  geom_sf(data = lakes_sweden, fill = "lightblue", color = NA) +
+  # geom_sf(data = df.temp_sf, aes(size = count, color = count), alpha = 0.6, shape = 20) +
+      geom_sf(data = df.temp_sf, aes(size = count, fill = count), 
+        color = "gray30", shape = 21, alpha = 0.7, fill = "yellow3") +
+  scale_fill_continuous_sequential(
+    palette = "YlOrBr",
+    name = "Isolates per County",
+    na.value = "gray96",
+    oob = squish
+  ) +
+  scale_size_continuous(
+    name = "Strains (n)",
+    range = c(1, 10),
+    breaks = c(1, 10, 50, 100, 500)
+  ) +
+  coord_sf(xlim = c(5, 27), ylim = c(55, 70)) +
+  theme_void() +
+  theme(
+    legend.position = c(0.1, 0.9),
+    legend.justification = c(0, 1),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8)
+  )
+
+
+ggsave(
+  "PLOTS/Fig3A_abundance_at_sites_map.pdf",
+  width = 7,
+  height = 9,
+  units = "in"
+)
+
+```
+
+# Taxonomic diversity of honey yeasts
+
+### Fig 3B Most common genera on separate maps
+
+```{r}
+
+library(ggplot2)
+library(sf)
+library(dplyr)
+library(tidyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(lwgeom)
+library(purrr)
+
+# Secect data
+families_keep <- c("Starmerella", "Zygosaccharomyces", "Rhodotorula",
+                   "Aureobasidium", "Metschnikowia", "Entelexis")
+
+df.temp <- df %>%
+  filter(!is.na(Species), !Species %in% c("No significant", "")) %>%
+  separate(Species, into = c("Family", "name"),
+           sep = "^\\S*\\K\\s+", remove = FALSE) %>%
+  filter(Family %in% families_keep) %>%
+  select(Batch.ID, Beekeeper.ID, Sample.type, Latitude, Longitude,
+         Bee.strain, Extraction.date, Species, Family) %>%
+  group_by(Beekeeper.ID, Family, Latitude, Longitude) %>%
+  summarise(count = n(), .groups = "drop")
+
+# Jitter to reduce overlap (degrees; tweak if needed)
+set.seed(1)
+df.temp <- df.temp %>%
+  mutate(
+    lat = jitter(Latitude,  amount = 0.04),
+    lon = jitter(Longitude, amount = 0.06)
+  )
+
+df.temp_sf <- st_as_sf(df.temp, coords = c("lon", "lat"), crs = 4326)
+
+# Define the basic map structure
+countries <- ne_countries(scale = "medium", returnclass = "sf")
+sweden <- countries %>% filter(name == "Sweden")
+
+lakes <- ne_download(scale = "medium", type = "lakes",
+                     category = "physical", returnclass = "sf") %>%
+  st_make_valid()
+
+lakes_sweden <- st_intersection(lakes, sweden)
+
+# Select colors
+family_cols <- c(
+  Starmerella        = "#69D6AF",
+  Entelexis          ="#F1921D",
+  Zygosaccharomyces  = "#1A78B0",
+  Rhodotorula        = "#ADEAAD",
+  Aureobasidium      = "#A71B4B",
+  Metschnikowia      = "#FCD87C"
+)
+
+
+# Plot function (one family at a time)
+plot_family_map <- function(fam) {
+  dat_fam <- df.temp_sf %>% filter(Family == fam)
+
+  ggplot() +
+    geom_sf(data = sweden, fill = "white", color = "black", linewidth = 0.3) +
+    geom_sf(data = lakes_sweden, fill = "lightblue", color = NA) +
+    geom_sf(
+      data = dat_fam,
+      aes(size = count),
+      color = family_cols[[fam]],
+      alpha = 0.6,
+      shape = 20
+    ) +
+    scale_size_continuous(
+      trans = "sqrt",
+      range = c(2, 12),
+      limits = c(1, 238),         # <- global scaling across all family maps
+      breaks = c(1, 2, 4, 8, 16, 64, 238),
+      name = "isolates (n)"
+    ) +
+    coord_sf(xlim = c(5, 27), ylim = c(55, 70), expand = FALSE) +
+    theme_void() +
+    ggtitle(fam) +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "italic"),
+      legend.position = c(0.1, 0.9),
+      legend.justification = c(0, 1)
+    )
+}
+
+
+# Generate all six maps
+plots <- set_names(families_keep) %>% map(plot_family_map)
+
+# View one:
+# plots$Metschnikowia
+
+# Save all
+walk2(
+  plots,
+  names(plots),
+  ~ ggsave(
+      filename = file.path("PLOTS", paste0("Fig3B_map_", .y, ".pdf")),
+      plot = .x,
+      width = 4,
+      height = 6
+    )
+)
+
+```
+
+### Figure 2B Treemap of genera
+
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(treemapify)
+
+df_treemap <- df.species %>%
+  filter(!Species %in% c(NA, "No significant")) %>%
+  separate(Species, into = c("Family", "name"), sep = "^\\S*\\K\\s+", remove = FALSE) %>%
+  count(Family, name = "n") %>%
+  mutate(
+    # 1) Define "sections" (edit the cutoffs to taste)
+    Section = case_when(
+      n >= 200 ~ "Most common",
+      n >= 50  ~ "Common",
+      n >= 5  ~ "Less common",
+      TRUE     ~ "Rare"
+    )
+  )
+
+ggplot(df_treemap, aes(
+  area = n,
+  fill = n,
+  label = Family,
+  subgroup = Section     # 1) this is what creates “sections”
+)) +
+  geom_treemap(color = "black", size = 1.5) +
+
+  # 1) Draw section borders and label each section
+  geom_treemap_subgroup_border(color = "white", size = 2) +
+  geom_treemap_subgroup_text(
+    place = "topleft",
+    grow = TRUE,
+    alpha = 0.9,
+    colour = "black",
+    fontface = "bold"
+  ) +
+
+  # Family labels (center)
+  geom_treemap_text(
+    colour = "black",
+    fontface = "bold.italic",
+    place = "middle",
+    reflow = TRUE,
+    min.size = 0.1
+  ) +
+
+  # 2) Counts in bottom-right, with size mapped to n (smaller for small groups)
+  geom_treemap_text(
+    aes(label = n, size = n),
+    colour = "gray20",
+    fontface = "plain",
+    place = "bottomright",
+    reflow = FALSE,
+    grow = FALSE
+  ) +
+ scale_size(range = c(3, 14), trans = "log2", guide = "none") +
+
+  scale_fill_gradientn(
+    colours = rev(hcl.colors(100, "Heat")),
+    trans = "log2",
+    name = "Number of isolates"
+  ) +
+  theme(
+    legend.position = "none",
+    legend.key.width = unit(2, "cm")
+  )
+
+ggsave(filename = "PLOTS/Fig2B_Treemap.pdf")
+
+```
+
+### Fig 3A Family vs latitude bar plot
+
+This plot is a bit tricky to get right directly from R, adjust in Illustrator.
+
+```{r}
+
+# calculate family counts to determine the group sizes
+family_counts <- df %>%
+  filter(!Species %in% c(NA,"No significant", "")) %>% # remove unknown
+  separate(Species, into = c("Family", "name"), sep = "^\\S*\\K\\s+", remove = FALSE) %>%  # get family names
+  count(Family)
+
+# plot as a ratio
+df %>% 
+  filter(!Species %in% c(NA, "No significant", "")) %>%  # remove unknown species
+  separate(Species, into = c("Family", "name"), sep = "^\\S*\\K\\s+", remove = FALSE) %>%  # get family names
+  left_join(family_counts, by = "Family") %>%
+  mutate(Family = if_else(n < 10, NA, Family)) %>%  # Yeast families that are isolated less than 10 times are unnamed here
+  group_by(Family, Latitude) %>% 
+  count() %>% 
+  ggplot(aes(fill = Family, 
+             x = as.character(Latitude),
+             y = n,
+             label = Family)) +
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(
+    values = hcl.colors(14, palette = "spectral", rev = FALSE),  # Use HCL colors for a nicer palette
+    na.value = "steelblue4",  # Color the unnamed groups as black
+    name = "Number of isolates"  # Name of the legend
+  ) +
+  labs(x = "", y = "") +  # Adjust axis labels
+  scale_x_discrete(expand = c(0, 0)) +  # Remove padding around the bars
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  # Minimal expansion for y to avoid clipping the top
+  theme_karl +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    axis.text.y = element_text(size = 4),
+    legend.key.width = unit(2, 'cm')
+  )
+
+ggsave("PLOTS/Fig3A_Latitude_diversity_genera.pdf", width = 7, height = 10)
+
+# plot the counts on top
+df %>% 
+  filter(!Species %in% c(NA, "No significant", "")) %>%  # remove unknown species
+  separate(Species, into = c("Family", "name"), sep = "^\\S*\\K\\s+", remove = FALSE) %>%  # get family names
+  group_by(Latitude) %>% 
+  count() %>% 
+  ggplot(aes(fill = n, 
+             x = as.character(Latitude),
+             y = n)) +
+  geom_bar(position = "stack", stat = "identity") +
+  scale_y_break(c(50, 150), space = 1, ticklabels = c(160)) +  # Custom y-axis breaks
+  scale_y_break(c(170, 500), space = 1, ticklabels = c(502)) +  # Custom y-axis breaks
+  scale_fill_viridis(
+    discrete = FALSE,
+    option = "C",
+    limits = c(0, 80),  # Limit the scale to avoid the large group from taking all focus
+    direction = -1,
+    na.value = "firebrick3",  # Color the large group outside of limit
+    name = "Number of isolates"  # Name of the legend
+  ) +
+  labs(x = "", y = "") +  # Remove axis labels
+  scale_x_discrete(expand = c(0, 0)) +  # Remove padding around the x-axis
+  scale_y_continuous(expand = c(0, 0.05)) +  # Minimal expansion for y-axis
+  theme_karl +
+  coord_flip() +
+  theme(
+    legend.position = "none",
+    legend.key.width = unit(2, 'cm'),
+    axis.text.y = element_blank(),  # Remove x-axis text (numbers)
+    axis.ticks.y = element_blank(),  # Remove x-axis tick marks
+    axis.line.y = element_line(color = "black"),  # Add x-axis line
+    panel.grid = element_blank(),  # Remove gridlines for clarity
+    panel.border = element_blank()  # Remove the panel border for a cleaner look
+  )
+
+# export as a short plot
+ggsave("Plots/Fig3A_Latitude_diversity_count.pdf", width = 7, height = 10)
+
+```
+
+### Fig 3C Jaccard similarity on species
+```{r}
+
+# Load packages
+library(dplyr)
+library(ComplexHeatmap)
+library(vegan)
+library(circlize)
+library(grid)
+
+# df is assumed to already be loaded in R
+
+temp2 <- df %>%
+  filter(!is.na(Species), !Species %in% c("No significant", "")) %>%
+  select(Strain.ID, Species, Batch.ID, Sample.type, Latitude, Longitude, Extraction.date)
+
+if (is.numeric(temp2$Extraction.date)) {
+  temp2$Extraction.date <- as.character(temp2$Extraction.date)
+}
+temp2$Extraction.date <- as.Date(temp2$Extraction.date, format = "%Y%m%d")
+temp2$Month <- format(temp2$Extraction.date, "%m")
+
+batch_meta <- temp2 %>%
+  distinct(Batch.ID, Sample.type, Latitude, Longitude, Month)
+
+isolate_counts <- temp2 %>%
+  count(Batch.ID, name = "Isolates")
+
+batch_meta <- batch_meta %>%
+  left_join(isolate_counts, by = "Batch.ID")
+
+presence_counts <- xtabs(~ Batch.ID + Species, data = temp2)
+presence_binary <- (presence_counts > 0) * 1
+
+batch_meta <- batch_meta[match(rownames(presence_binary), batch_meta$Batch.ID), ]
+stopifnot(identical(as.character(batch_meta$Batch.ID), rownames(presence_binary)))
+
+jaccard_dist <- vegdist(presence_binary, method = "jaccard", binary = TRUE)
+jaccard_similarity <- 1 - as.matrix(jaccard_dist)
+
+batch_hclust <- hclust(as.dist(1 - jaccard_similarity), method = "average")
+
+latitude_breaks <- seq(min(batch_meta$Latitude), max(batch_meta$Latitude), length.out = 5)
+latitude_colors <- colorRamp2(latitude_breaks, hcl.colors(5, "YlGnBu"))
+
+sample_types <- unique(batch_meta$Sample.type)
+sample_type_colors <- setNames(
+  hcl.colors(length(sample_types), "YlOrRd", rev = TRUE),
+  sample_types
+)
+
+present_months <- sort(unique(batch_meta$Month))
+month_labels <- setNames(month.abb, sprintf("%02d", 1:12))
+present_month_labels <- unname(month_labels[present_months])
+month_colors <- setNames(
+  hcl.colors(length(present_months), "Hawaii"),
+  present_month_labels
+)
+
+isolate_breaks <- seq(min(batch_meta$Isolates), max(batch_meta$Isolates), length.out = 5)
+isolate_colors <- colorRamp2(isolate_breaks, hcl.colors(5, "Sunset"))
+
+annotation_colors <- list(
+  Month = month_colors,
+  SampleType = sample_type_colors,
+  Latitude = latitude_colors,
+  Isolates = isolate_colors
+)
+
+bottom_annotation <- HeatmapAnnotation(
+  Month = factor(batch_meta$Month, levels = present_months, labels = present_month_labels),
+  SampleType = batch_meta$Sample.type,
+  Latitude = batch_meta$Latitude,
+  Isolates = batch_meta$Isolates,
+  col = annotation_colors,
+  annotation_name_gp = gpar(fontsize = 9)
+)
+
+heatmap_colors <- colorRamp2(
+  c(0, 0.25, 0.5, 0.75, 1),
+  hcl.colors(5, "Lajolla")
+)
+
+ht <- Heatmap(
+  jaccard_similarity,
+  name = "Jaccard similarity",
+  col = heatmap_colors,
+  cluster_rows = as.dendrogram(batch_hclust),
+  cluster_columns = as.dendrogram(batch_hclust),
+  bottom_annotation = bottom_annotation,
+  show_row_dend = TRUE,
+  show_column_dend = TRUE,
+  show_row_names = TRUE,
+  show_column_names = FALSE,
+  row_names_gp = gpar(fontsize = 7),
+  column_title = "Honey batch similarity based on shared yeast species",
+  row_title = "Batch.ID"
+)
+
+draw(
+  ht,
+  heatmap_legend_side = "right",
+  annotation_legend_side = "right"
+)
+
+# Optional save
+pdf("Plots/Fig3C_Jaccard_similarity.pdf", width = 13, height = 11)
+draw(ht, heatmap_legend_side = "right", annotation_legend_side = "right")
+dev.off()
+
+
+```
+
+### Fig 2C Phylogenetic tree of honey yeasts
+```{r}
+
+library(metacoder)
+library(RColorBrewer)
+
+df.tax <- read.table("DATA/Sample_Taxonomy_Abundance_Data_updated20260929.tsv", sep = "\t", header = T)
+
+# Parse the taxonomic data, ensuring the abundance column is properly included
+tax_data <- parse_tax_data(df.tax,
+                           class_cols = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"),
+                           datasets = list(abundance = df.tax),
+                           mappings = c("Species" = "Species"))
+
+# Make sure the abundance is correctly calculated
+tax_data$data$tax_abund <- calc_taxon_abund(tax_data, data = "abundance", cols = "Abundance")
+
+heat_tree(tax_data,
+          node_label = taxon_names,
+          node_size = tax_data$data$tax_abund$Abundance,
+          node_size_range = c(0.007, 0.07),
+          node_color = tax_data$data$tax_abund$Abundance,
+          node_color_range =  rev(hcl.colors(7, "Heat")),  # Adjust number of colors as needed and reverse it
+          node_color_axis_label = "Abundance",
+          node_size_axis_label = "Abundance Size",
+          layout = "davidson-harel",       
+          initial_layout = "reingold-tilford",
+          overlap_avoidance = 0.50
+          )
+
+ggsave("PLOTS/Fig2C_Taxonomy.pdf", width = 20, height = 20)
+
+```
+
+# Growth phenotypes and sugar tolerance
+
+### Import growth data
+
+```{r Curves}
+
+# Import function
+import.gp.curves <- function(path, env, pos) {
+  gp <- read.table(path, header = FALSE, sep = "\t") %>% 
+    select(-V1) %>% # remove empty first column
+    mutate(V2=V2/60) # change time from minutes to hours
+  names(gp) <- c("Time", # add column names
+                 "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", 
+                 "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", 
+                 "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", 
+                 "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", 
+                 "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", 
+                 "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", 
+                 "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G11", "G12", 
+                 "H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "H11", "H12")
+  # import metadata
+  df.names <- read.table("DATA/GrowthProfiler/Metadata_Growthprofiler_CC.tsv", 
+                       header = TRUE, sep = "\t") # position H6-H12 are empty media controls.
+  # import the full species table
+  df.species <- read.table("DATA/Species_blast.tsv",
+                       header = TRUE, sep = "\t") 
+  df <- df.names %>% 
+    left_join(., df.species, by="Strain.ID") %>% 
+    select(Position, Strain.ID, Species)
+  
+  gp.melt <- gp %>% 
+  pivot_longer(
+      cols = -Time,              # everything except "Time"
+      names_to = "Position",
+      values_to = "Green.value"
+    ) %>%
+  left_join(., df, by="Position") %>%
+    mutate(Environment=env,
+           GP.position=pos ) %>% 
+  group_by(Strain.ID)
+  return(gp.melt)
+}
+
+# Import growth profiler data
+
+# First runs with only two replicates (did not dare to book more)
+gp1 <- import.gp.curves("DATA/GrowthProfiler/250220_GP4_HoneyCC_YPD2_day3.txt", "Glucose, 2%", 4)
+gp2 <- import.gp.curves("DATA/GrowthProfiler/250220_GP5_HoneyCC_YPD2_day3.txt", "Glucose, 2%", 5)
+gp3 <- import.gp.curves("DATA/GrowthProfiler/250220_GP6_HoneyCC_YPF2_day3.txt", "Fructose, 2%", 6)
+gp4 <- import.gp.curves("DATA/GrowthProfiler/250220_GP7_HoneyCC_YPF2_day3.txt", "Fructose, 2%", 7)
+
+# Second run, YPD 10% and 20%
+gp5 <- import.gp.curves("DATA/GrowthProfiler/250224_GP4_HoneyCC_YPD10.txt", "Glucose, 10%", 4) %>% filter(Time < 72)
+gp6 <- import.gp.curves("DATA/GrowthProfiler/250224_GP5_HoneyCC_YPD10.txt", "Glucose, 10%", 5) %>% filter(Time < 72)
+gp7 <- import.gp.curves("DATA/GrowthProfiler/250224_GP6_HoneyCC_YPD10.txt", "Glucose, 10%", 6) %>% filter(Time < 72)
+gp8 <- import.gp.curves("DATA/GrowthProfiler/250224_GP7_HoneyCC_YPD20.txt", "Glucose, 20%", 7) %>% filter(Time < 72)
+gp9 <- import.gp.curves("DATA/GrowthProfiler/250224_GP8_HoneyCC_YPD20.txt", "Glucose, 20%", 8) %>% filter(Time < 72)
+gp10 <- import.gp.curves("DATA/GrowthProfiler/250224_GP9_HoneyCC_YPD20.txt", "Glucose, 20%", 9) %>% filter(Time < 72)
+
+# Third run, YPD 40% and 60%
+gp11 <- import.gp.curves("DATA/GrowthProfiler/250227_GP4_HoneyCC_YPD40_day3.txt", "Glucose, 40%", 4)
+gp12 <- import.gp.curves("DATA/GrowthProfiler/250227_GP5_HoneyCC_YPD40_day3.txt", "Glucose, 40%", 5)
+gp13 <- import.gp.curves("DATA/GrowthProfiler/250227_GP6_HoneyCC_YPD40_day3.txt", "Glucose, 40%", 6)
+gp14 <- import.gp.curves("DATA/GrowthProfiler/250227_GP7_HoneyCC_YPD60_day3.txt", "Glucose, 60%", 7)
+gp15 <- import.gp.curves("DATA/GrowthProfiler/250227_GP8_HoneyCC_YPD60_day3.txt", "Glucose, 60%", 8)
+gp16 <- import.gp.curves("DATA/GrowthProfiler/250227_GP9_HoneyCC_YPD60_day3.txt", "Glucose, 60%", 9)
+
+# Fourth run, YPD 70% and 80% 
+gp17 <- import.gp.curves("DATA/GrowthProfiler/250305_GP4_HoneyCC_YPD70_day6.txt", "Glucose, 70%", 4)
+gp18 <- import.gp.curves("DATA/GrowthProfiler/250305_GP5_HoneyCC_YPD70_day6.txt", "Glucose, 70%", 5)
+gp19 <- import.gp.curves("DATA/GrowthProfiler/250305_GP6_HoneyCC_YPD70_day6.txt", "Glucose, 70%", 6)
+gp20 <- import.gp.curves("DATA/GrowthProfiler/250305_GP7_HoneyCC_YPD80_day6.txt", "Glucose, 80%", 7)
+gp21 <- import.gp.curves("DATA/GrowthProfiler/250305_GP8_HoneyCC_YPD80_day6.txt", "Glucose, 80%", 8)
+gp22 <- import.gp.curves("DATA/GrowthProfiler/250305_GP9_HoneyCC_YPD80_day6.txt", "Glucose, 80%", 9)
+
+# Fifth run, SC 2% Glucose, SC 2% Glucose pH 3.5
+gp23 <- import.gp.curves("DATA/GrowthProfiler/250324_GP4_HoneyCC_SC.txt", "SC, Glucose 2%", 4)
+gp24 <- import.gp.curves("DATA/GrowthProfiler/250324_GP5_HoneyCC_SC.txt", "SC, Glucose 2%", 5)
+gp25 <- import.gp.curves("DATA/GrowthProfiler/250324_GP6_HoneyCC_SC.txt", "SC, Glucose 2%", 6)
+gp26 <- import.gp.curves("DATA/GrowthProfiler/250324_GP7_HoneyCC_SC_pH3dot5.txt", "SC, Glucose 2%, pH 3.5", 7)
+gp27 <- import.gp.curves("DATA/GrowthProfiler/250324_GP8_HoneyCC_SC_pH3dot5.txt", "SC, Glucose 2%, pH 3.5", 8)
+gp28 <- import.gp.curves("DATA/GrowthProfiler/250324_GP9_HoneyCC_SC_pH3dot5.txt", "SC, Glucose 2%, pH 3.5", 9)
+
+# combine all df:s
+gp <- do.call("rbind", list(gp1, gp2, gp3, gp4, gp5, gp6, gp7, gp8, gp9, gp10, 
+                            gp11, gp12, gp13, gp14, gp15, gp16, gp17, gp18, gp19, 
+                            gp20, gp21, gp22, gp23, gp24, gp25, gp26, gp27, gp28)) %>% 
+  filter(!Position %in% c("H6", "H7", "H8", "H9", "H10", "H11", "H12")) # remove empty positions
+
+# remove temp df:s
+rm(gp1, gp2, gp3, gp4, gp5, gp6, gp7, gp8, gp9, gp10, gp11, gp12, gp13, gp14, 
+   gp15, gp16, gp17, gp18, gp19, gp20, gp21, gp22, gp23, gp24, gp25, gp26, gp27, gp28) 
+
+# Caluculate mean values
+gp.mean <- gp %>% 
+  select(-Position, -GP.position) %>% # remove position
+  group_by(Species, Strain.ID, Time, Environment) %>%   
+  summarise_all(list(mean = ~mean(., na.rm = TRUE),
+                     median = ~median(., na.rm = TRUE),
+                     sd = ~sd(., na.rm = TRUE),
+                     se = ~sd(., na.rm = TRUE)/sqrt(sum(!is.na(.)))
+                     ))
+
+```
+
+### Figure S1 Growth curves
+
+```{r}
+
+# plot mean values, each strain per plot
+gp.mean %>% 
+    filter(grepl("^Glucose", Environment)) %>% # select one sugar
+  mutate(Strain.ID2= paste("HONEY", Strain.ID, Environment, sep="")) %>% 
+ ggplot(aes(x=Time, y=mean, group=Strain.ID2)) +
+    geom_ribbon(aes(ymin = mean - se,
+                  ymax = mean + se), 
+              alpha = 0.05) +
+  geom_line(alpha=0.7, aes(color=Environment), linewidth=0.5) +
+  scale_color_viridis(discrete = TRUE, option = "H", begin = 0.1, end = 0.9, na.value="gray80") +
+  xlab("Time (hours)") + ylab("Green values") +
+  facet_wrap(~paste(Species, Strain.ID, sep = ", "),
+             labeller = label_wrap_gen(width=20), # to split the label on two lines
+             ncol=6
+             ) +
+    scale_x_continuous(breaks = seq(0, 144, by = 24),
+                     limits = c(0,144)) +
+  theme_pubr() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 24),
+        strip.background = element_blank(),
+        strip.text = element_text(face = "bold.italic", size = 7),
+        legend.position =  "top",
+        axis.text.x = element_text(size = 6),
+        legend.text = element_text(face = "italic"))
+
+ggsave("Plots/FigS1_growthcurves.pdf", width = 12, height = 20, dpi=300)
+
+```
+
+### Figure 4C - growth curves on different glucose concentrations
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+# load palette
+fam_cols <- readRDS("family_palette_14_spectral_alpha.rds")
+
+# add grouping variable
+gp.mean.plot <- gp.mean %>%
+  ungroup() %>%
+  mutate(
+    Family = stringr::word(Species, 1),
+    Family = if_else(Family %in% names(fam_cols), Family, "Other")
+  )
+
+# extend palette
+plot_cols <- c(fam_cols, Other = "steelblue4")
+
+# environments in desired order
+env_order <- c(
+  "Glucose, 10%", "Glucose, 20%", "Glucose, 40%",
+  "Glucose, 60%", "Glucose, 70%", "Glucose, 80%"
+)
+
+# define xmax per environment
+env_xmax <- c(
+  "Glucose, 10%" = 72,
+  "Glucose, 20%" = 72,
+  "Glucose, 40%" = 72,
+  "Glucose, 60%" = 72,
+  "Glucose, 70%" = 120,
+  "Glucose, 80%" = 120
+)
+
+# global y limit for comparability
+tmp <- gp.mean.plot %>%
+  ungroup() %>%
+  filter(!grepl("^SC", Environment)) %>%
+  filter(Environment %in% env_order)
+
+ymax <- max(tmp$mean + tmp$se, na.rm = TRUE)
+
+# plotting function
+plot_env <- function(env_name) {
+  xmax <- env_xmax[[env_name]]
+
+  gp.mean.plot %>%
+    ungroup() %>%
+    filter(!grepl("^SC", Environment)) %>%
+    filter(Environment == env_name) %>%
+    ggplot(aes(x = Time, y = mean, group = Strain.ID)) +
+    geom_ribbon(
+      aes(
+        ymin = mean - se,
+        ymax = mean + se,
+        fill = Family
+      ),
+      alpha = 0.03
+    ) +
+    geom_line(
+      aes(color = Family),
+      alpha = 0.9,
+      linewidth = 0.6
+    ) +
+    scale_color_manual(values = plot_cols, na.value = "steelblue4") +
+    scale_fill_manual(values = plot_cols, na.value = "steelblue4") +
+    scale_x_continuous(
+      breaks = seq(0, xmax, by = 24),
+      limits = c(0, xmax),
+      expand = c(0, 0)
+    ) +
+    scale_y_continuous(
+      limits = c(0, ymax),
+      expand = c(0, 0)
+    ) +
+    xlab("Time (h)") +
+    ylab("Green values") +
+    ggtitle(env_name) +
+    theme_karl +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 12),
+      panel.grid.major.y = element_line(
+        linewidth = 1,
+        color = "gray95",
+        linetype = "dotted"
+      ),
+      legend.position = "none",
+      legend.text = element_text(face = "italic"),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
+    )
+}
+
+# save each panel separately
+for (env in env_order) {
+  p <- plot_env(env)
+  file_name <- gsub("[,% ]+", "_", env)
+  ggsave(
+    filename = paste0("Plots/Fig4C_", file_name, "single_panel.pdf"),
+    plot = p,
+    width = ifelse(env_xmax[[env]] == 72, 3, 5),
+    height = 3,
+    dpi = 400
+  )
+}
+
+
+```
+
+### Growth curver - extract growth phenotypes
+```{r}
+
+# Load necessary packages
+library(growthcurver)  # For growth curve fitting
+library(data.table)    # For efficient data manipulation
+library(dplyr)         # For summarization
+
+# Convert your dataset to a data.table (if not already)
+df <- as.data.table(gp)
+
+# Helper function to return a data.table with NA values for all traits
+na_result <- function(df) {
+  data.table(
+    Species    = df$Species[1],
+    Strain.ID  = df$Strain.ID[1],
+    sample     = df$Environment[1],
+    k          = NA_real_,
+    n0         = NA_real_,
+    r          = NA_real_,
+    t_mid      = NA_real_,
+    t_gen      = NA_real_,
+    auc_l      = NA_real_,
+    auc_e      = NA_real_,
+    sigma      = NA_real_,
+    lag_phase  = NA_real_
+  )
+}
+
+run_growth_curve <- function(df, smooth = TRUE, span = 0.2, flat_threshold = 12, return_curve = FALSE) {
+  
+  if (nrow(df) == 0 || all(is.na(df$Green.value))) {
+    return(na_result(df))
+  }
+  
+  if ((max(df$Green.value, na.rm = TRUE) - min(df$Green.value, na.rm = TRUE)) < flat_threshold) {
+    warning("Flat curve detected; skipping growth curve extraction.")
+    return(na_result(df))
+  }
+  
+  # Smooth the data
+  raw_values <- if (smooth) {
+    tryCatch(
+      predict(loess(Green.value ~ Time, data = df, span = span)),
+      error = function(e) {
+        warning("Smoothing failed: ", e$message)
+        df$Green.value
+      }
+    )
+  } else {
+    df$Green.value
+  }
+  
+  # Make monotonic
+  mono_values <- cummax(raw_values)
+  
+  # Fit growth curve
+  fit <- tryCatch(
+    SummarizeGrowth(df$Time, mono_values),
+    error = function(e) {
+      warning("Growth curve fit failed: ", e$message)
+      NULL
+    }
+  )
+  
+  # Return time-series table if requested
+  if (return_curve && !is.null(fit)) {
+    fitted_values <- tryCatch(
+      predict(fit$model, list(t = df$Time)),
+      error = function(e) {
+        warning("Fitted values prediction failed: ", e$message)
+        rep(NA_real_, length(df$Time))
+      }
+    )
+    
+    return(data.table(
+      Species     = df$Species[1],
+      Strain.ID   = df$Strain.ID[1],
+      sample      = df$Environment[1],
+      Time        = df$Time,
+      Green.value = df$Green.value,
+      Smoothed    = raw_values,
+      Monotonic   = mono_values,
+      Fitted      = fitted_values
+    ))
+  }
+  
+  if (is.null(fit)) return(na_result(df))
+  
+  vals <- fit$vals
+  lag_phase <- if (vals$r != 0) vals$t_mid - (1 / vals$r) else NA_real_
+  
+  # Sanity checks
+  if (is.na(lag_phase) || lag_phase < 0 ||
+      is.na(vals$k) || vals$k < 0.01 || vals$k > 500 ||
+      is.na(vals$n0) || vals$n0 < 0 ||
+      is.na(vals$r) || vals$r < 0 || vals$r > 10 ||
+      is.na(vals$t_gen) || vals$t_gen <= 0) {
+    warning("Abnormal growth curve parameters detected; skipping.")
+    return(na_result(df))
+  }
+  
+  # Return traits
+  data.table(
+    Species    = df$Species[1],
+    Strain.ID  = df$Strain.ID[1],
+    sample     = df$Environment[1],
+    k          = vals$k,
+    n0         = vals$n0,
+    r          = vals$r,
+    t_mid      = vals$t_mid,
+    t_gen      = vals$t_gen,
+    auc_l      = vals$auc_l,
+    auc_e      = vals$auc_e,
+    sigma      = vals$sigma,
+    lag_phase  = lag_phase
+  )
+}
+
+# Run across all curves
+df.traits <- df[, run_growth_curve(.SD), 
+                by = .(Species, Strain.ID, Environment, Position, GP.position)]
+
+
+# write.table(df.traits, "traits.tsv", quote = F, row.names = F, sep = "\t")
+
+# Summarize traits
+df.traits.mean <- df.traits %>% 
+  select(-Position, -GP.position) %>%  # Remove grouping variables not needed in summary
+  group_by(Species, Strain.ID, Environment) %>%   
+  summarise_all(list(
+    mean   = ~mean(., na.rm = TRUE),
+    median = ~median(., na.rm = TRUE),
+    sd     = ~sd(., na.rm = TRUE),
+    se     = ~sd(., na.rm = TRUE) / sqrt(sum(!is.na(.)))
+  ))
+
+# write.table(df.traits.mean, "traits_mean.tsv", quote = F, row.names = F, sep = "\t")
+
+```
+
+### Fig 4B Heatmap
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ComplexHeatmap)
+library(circlize)
+
+# Load palette
+fam_cols <- readRDS("family_palette_14_spectral_alpha.rds")
+
+# 1) Create matrix
+wide_auc <- df.traits.mean %>%
+  filter(!Strain.ID %in% c(950, 865, 1395, 1665, 880, 687, 462, 2272)) %>%
+  filter(Environment %in% c(
+    "Fructose, 2%",
+    "Glucose, 2%",
+    "Glucose, 10%",
+    "Glucose, 20%",
+    "Glucose, 40%",
+    "Glucose, 60%",
+    "Glucose, 70%",
+    "Glucose, 80%"
+  )) %>% 
+mutate(
+    Strain = paste(Species, Strain.ID, sep = " "),
+    auc_e_mean = as.numeric(auc_e_mean)
+  ) %>%
+  select(Strain, Species, Strain.ID, Environment, auc_e_mean) %>%
+  pivot_wider(names_from = Environment, values_from = auc_e_mean) %>%
+  as.data.frame()
+
+rownames(wide_auc) <- wide_auc$Strain
+
+mat_auc <- wide_auc %>%
+  select(-Strain, -Species, -Strain.ID) %>%
+  as.matrix()
+
+storage.mode(mat_auc) <- "numeric"
+
+
+# Replace NA with 0
+mat_auc[is.na(mat_auc)] <- 0
+
+# rearrange order of environments 
+
+env_order <- c(
+  "Fructose, 2%",
+  "Glucose, 2%",
+  "Glucose, 10%",
+  "Glucose, 20%",
+  "Glucose, 40%",
+  "Glucose, 60%",
+  "Glucose, 70%",
+  "Glucose, 80%"
+)
+
+mat_auc <- mat_auc[, env_order]
+
+colnames(mat_auc) <- c(
+  "Fructose 2%",
+  "Glucose 2%",
+  "Glucose 10%",
+  "Glucose 20%",
+  "Glucose 40%",
+  "Glucose 60%",
+  "Glucose 70%",
+  "Glucose 80%"
+)
+
+# 2) Build metadata
+# Here "Family" is intentionally used as your genus-level grouping variable
+strain_meta <- df.traits.mean %>%
+  filter(!Strain.ID %in% c(950, 865, 1395, 1665, 880, 687, 462, 2272)) %>%
+  distinct(Species, Strain.ID) %>%
+  separate(
+    Species,
+    into = c("Family", "name"),
+    sep = "^\\S*\\K\\s+",
+    remove = FALSE
+  ) %>%
+  mutate(Strain = paste(Species, Strain.ID, sep = " "))
+
+# 3) Match metadata order to matrix rows
+strain_meta <- strain_meta[match(rownames(mat_auc), strain_meta$Strain), ]
+stopifnot(!any(is.na(strain_meta$Strain)))
+
+# 4) Keep only groups present in the palette; everything else becomes "other" via NA
+strain_meta <- strain_meta %>%
+  mutate(Family = if_else(Family %in% names(fam_cols), Family, NA_character_))
+
+# Optional check: should return character(0)
+print(setdiff(unique(na.omit(strain_meta$Family)), names(fam_cols)))
+
+# 5) Row annotation
+ha_family <- rowAnnotation(
+  Family = strain_meta$Family,
+  col = list(Family = fam_cols),
+  na_col = "steelblue4"
+)
+
+# 6) Heatmap colors
+col_fun <- colorRamp2(
+  c(
+    min(mat_auc, na.rm = TRUE),
+    median(mat_auc, na.rm = TRUE),
+    max(mat_auc, na.rm = TRUE)
+  ),
+  c("white", "#6baed6", "#08306b")
+)
+
+# 7) Draw heatmap
+pdf("PLOTS/Fig4B_Traits_heatmap.pdf", width = 5, height = 7)
+
+ht <- Heatmap(
+  mat_auc,
+  name = "auc_e",
+  col = col_fun,
+  na_col = "gray85",
+  cluster_rows = TRUE,
+  cluster_columns = FALSE,
+  show_row_names = FALSE,
+  left_annotation = ha_family
+)
+
+draw(ht)
+
+dev.off()
+
+```
+
+### Fig 4D Species abundance vs glucose tolerance
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Load family colour palette
+fam_cols <- readRDS("family_palette_14_spectral_alpha.rds")
+
+df.abundance <- df.species %>%
+  filter(
+    !is.na(Species),
+    Species != "No significant",
+    Species != ""
+  ) %>%
+  distinct(Strain.ID, Species) %>%
+  count(Species, name = "Abundance")
+
+species_palette_tbl <- df %>%
+  filter(!is.na(Species),
+         Species != "No significant",
+         Species != "") %>%
+  distinct(Species) %>%
+  separate(
+    Species,
+    into = c("Family", "name"),
+    sep = "^\\S*\\K\\s+",
+    remove = FALSE
+  ) %>%
+  mutate(
+    Color = fam_cols[Family],
+    Color = if_else(is.na(Color), "steelblue4", Color)
+  )
+
+species_cols <- setNames(
+  species_palette_tbl$Color,
+  species_palette_tbl$Species
+)
+
+plot_data <- df.traits.mean %>%
+  left_join(df.abundance, by = "Species") %>%
+  filter(Environment == "Glucose, 70%") %>%
+  mutate(
+    auc_e_mean = replace(
+      auc_e_mean,
+      !is.finite(auc_e_mean),
+      0
+    )
+  ) %>%
+  group_by(Species) %>%
+  summarise(
+    auc_e_mean = mean(auc_e_mean, na.rm = TRUE),
+    Abundance = first(Abundance),
+    .groups = "drop"
+  ) %>%
+  mutate(log_abund = log10(Abundance))
+
+
+fit <- lm(log_abund ~ auc_e_mean, data = plot_data)
+
+r2 <- summary(fit)$r.squared
+
+r2_label <- paste0(
+  "R\u00B2 = ",
+  formatC(r2, digits = 2, format = "f")
+)
+
+ggplot(
+  plot_data,
+  aes(
+    x = auc_e_mean,
+    y = log_abund,
+    color = Species
+  )
+) +
+  geom_point() +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "black",
+    alpha = 0.2
+  ) +
+  scale_color_manual(values = species_cols) +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = r2_label,
+    hjust = 1.1,
+    vjust = 1.5
+  ) +
+  labs(
+    x = "Area under curve (70% glucose)",
+    y = "Species abundance (log10)"
+  ) +
+  theme_karl +
+  theme(legend.position = "none")
+
+ggsave(
+  "PLOTS/Fig4D_species_vs_tolerance.pdf",
+  width = 5,
+  height = 5
+)
+
+```
+
+### Fig 4E Genera abundance vs glucose tolerance
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Load genus colour palette
+fam_cols <- readRDS("family_palette_14_spectral_alpha.rds")
+
+
+# Calculate abundance for each genus
+
+family_counts <- df.species %>%
+  filter(
+    !is.na(Species),
+    Species != "No significant",
+    Species != ""
+  ) %>%
+  distinct(Strain.ID, Species) %>%
+  separate(
+    Species,
+    into = c("Family", "name"),
+    sep = "^\\S*\\K\\s+",
+    remove = FALSE
+  ) %>%
+  count(Family, name = "Family_abundance")
+
+
+# Calculate mean AUC for each species
+
+species_auc <- df.traits.mean %>%
+  filter(Environment == "Glucose, 70%") %>%
+  mutate(
+    auc_e_mean = replace(
+      auc_e_mean,
+      !is.finite(auc_e_mean),
+      0
+    )
+  ) %>%
+  separate(
+    Species,
+    into = c("Family", "name"),
+    sep = "^\\S*\\K\\s+",
+    remove = FALSE
+  ) %>%
+  group_by(Species, Family) %>%
+  summarise(
+    species_auc = mean(auc_e_mean, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+# Calculate mean AUC for each genus
+
+plot_data <- species_auc %>%
+  group_by(Family) %>%
+  summarise(
+    auc_e_mean = mean(species_auc, na.rm = TRUE),
+    n_species = n(),
+    .groups = "drop"
+  ) %>%
+  left_join(family_counts, by = "Family") %>%
+  mutate(
+    log_abund = log10(Family_abundance)
+  )
+
+
+# Linear regression
+
+fit <- lm(log_abund ~ auc_e_mean, data = plot_data)
+
+r2 <- summary(fit)$r.squared
+
+r2_label <- paste0(
+  "R\u00B2 = ",
+  formatC(r2, digits = 2, format = "f")
+)
+
+
+# Plot
+
+ggplot(
+  plot_data,
+  aes(
+    x = auc_e_mean,
+    y = log_abund,
+    color = Family
+  )
+) +
+  geom_point(size = 3) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE,
+    color = "black",
+    alpha = 0.2
+  ) +
+  scale_color_manual(
+    values = fam_cols,
+    na.value = "steelblue4"
+  ) +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = r2_label,
+    hjust = 1.1,
+    vjust = 1.5
+  ) +
+  labs(
+    x = "Mean AUC (70% glucose)",
+    y = "Genus abundance (log10)"
+  ) +
+  theme_karl +
+  theme(
+    legend.position = "none"
+  )
+
+ggsave(
+  "PLOTS/Fig4E_genera_vs_tolerance.pdf",
+  width = 5,
+  height = 5
+)
+
+```
+
+
+# Sugar consumption and growth
+
+#### Import HPLC data
+```{r}
+
+hplc <- read.delim("DATA/HPLC/250512_HPLC_YPDF_HoneyCC.tsv", header = TRUE, fill = TRUE, 
+                   na.strings = "N/A") %>% 
+  mutate(Strain.ID = as.integer(Strain.ID)) %>% # required to do the join
+  left_join(df.species %>% select(Strain.ID, Species), # select only columns needed
+            by="Strain.ID") %>%  # join with the species ID loaded earlier in the script
+  mutate(Glucose = as.numeric(Glucose)*10, 
+         Fructose = as.numeric(Fructose)*10,
+         Ethanol = as.numeric(Ethanol)*10) %>% 
+  mutate(Sugar.ratio = Glucose/Fructose)
+
+# hplc.controls <- hplc %>% 
+#   filter(Media=="YPDF, 10% + 10%") %>% 
+#   filter(is.na(Strain.ID)) %>% 
+#   summarise_all(list(mean = ~mean(., na.rm = TRUE),
+#                      median = ~median(., na.rm = TRUE),
+#                      sd = ~sd(., na.rm = TRUE),
+#                      se = ~sd(., na.rm = TRUE)/sqrt(sum(!is.na(.)))
+#   ))
+
+hplc.2 <- hplc %>% 
+  filter(Media=="YPDF, 2+2%") %>% 
+  mutate( # calculate the percent reductions - values are the blank medias after some evaporation.
+    Glucose_pct_reduction = pmax(0, 100 * (22.23065 - Glucose) / 22.23065),
+    Fructose_pct_reduction = pmax(0, 100 * (24.1858 - Fructose) / 24.1858)
+  )
+
+hplc.10 <-  hplc %>% 
+  filter(Media=="YPDF, 10+10%") %>% 
+  mutate( # calculate the percent reductions - values are the blank medias after some evaporation.
+    Glucose_pct_reduction = pmax(0, 100 * (113.977 - Glucose) / 113.977),
+    Fructose_pct_reduction = pmax(0, 100 * (125.356 - Fructose) / 125.356)
+  )
+
+
+```
+
+#### Fig 5B-C Glucose and Fructose consumption
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+
+# Plot 46 h runs for 2% sugar, averaged per species
+plot_2 <- hplc.2 %>% 
+  filter(Sample.timepoint.hours == 46) %>%
+  filter(!is.na(Species), Species != "No significant", Species != "") %>%
+  separate(
+    Species,
+    into = c("Family", "name"),
+    sep = "^\\S*\\K\\s+",
+    remove = FALSE
+  ) %>%
+  group_by(Species, Family) %>%
+  summarise(
+    Glucose_pct_reduction = mean(Glucose_pct_reduction, na.rm = TRUE),
+    Fructose_pct_reduction = mean(Fructose_pct_reduction, na.rm = TRUE),
+    Sugar.ratio = mean(Sugar.ratio, na.rm = TRUE),
+    n_strains = n_distinct(Strain.ID),
+    .groups = "drop"
+  ) %>%
+  ggplot(aes(
+    x = Glucose_pct_reduction,
+    y = Fructose_pct_reduction,
+    color = Family,
+    text = paste(
+      "Species:", Species,
+      "<br>Mean glucose consumed:", round(Glucose_pct_reduction, 2),
+      "<br>Mean fructose consumed:", round(Fructose_pct_reduction, 2),
+      "<br>Mean sugar ratio:", round(Sugar.ratio, 2),
+      "<br>n strains:", n_strains
+    )
+  )) +
+  geom_point(size = 2) +
+  scale_color_manual(
+    values = fam_cols,
+    na.value = "steelblue4",
+    name = "Family"
+  ) +
+  coord_fixed() +
+  ylim(0, 100) +
+  xlim(0, 100) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    title = "2% of each sugar, 46 h",
+    x = "Glucose consumed (%)",
+    y = "Fructose consumed (%)"
+  ) +
+  theme_karl +
+  theme(legend.position = "none")
+
+plot_2
+
+ggsave(
+  "PLOTS/Fig5B_HPLC_fructose2_vs_glucose2_46h.pdf",
+  plot_2, width = 5, height = 5
+)
+
+# Plot 46 h runs for 10% sugar, averaged per species
+plot_10 <- hplc.10 %>% 
+  filter(Sample.timepoint.hours == 46) %>%
+  filter(!is.na(Species), Species != "No significant", Species != "") %>%
+  separate(
+    Species,
+    into = c("Family", "name"),
+    sep = "^\\S*\\K\\s+",
+    remove = FALSE
+  ) %>%
+  group_by(Species, Family) %>%
+  summarise(
+    Glucose_pct_reduction = mean(Glucose_pct_reduction, na.rm = TRUE),
+    Fructose_pct_reduction = mean(Fructose_pct_reduction, na.rm = TRUE),
+    Sugar.ratio = mean(Sugar.ratio, na.rm = TRUE),
+    n_strains = n_distinct(Strain.ID),
+    .groups = "drop"
+  ) %>%
+  ggplot(aes(
+    x = Glucose_pct_reduction,
+    y = Fructose_pct_reduction,
+    color = Family,
+    text = paste(
+      "Species:", Species,
+      "<br>Mean glucose consumed:", round(Glucose_pct_reduction, 2),
+      "<br>Mean fructose consumed:", round(Fructose_pct_reduction, 2),
+      "<br>Mean sugar ratio:", round(Sugar.ratio, 2),
+      "<br>n strains:", n_strains
+    )
+  )) +
+  geom_point(size = 2) +
+  scale_color_manual(
+    values = fam_cols,
+    na.value = "steelblue4",
+    name = "Family"
+  ) +
+  coord_fixed() +
+  ylim(0, 50) +
+  xlim(0, 50) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    title = "10% of each sugar, 46 h",
+    x = "Glucose consumed (%)",
+    y = "Fructose consumed (%)"
+  ) +
+  theme_karl +
+  theme(legend.position = "none")
+
+plot_10
+
+ggsave(
+  "PLOTS/Fig5C_HPLC_fructose10_vs_glucose10_46h.pdf",
+  plot_10, width = 5, height = 5
+)
+
+```
+
+### Import Growth Profiler data Glucose vs Fructose
+
+```{r}
+
+# Import function
+import.gp.curves <- function(path, env, pos) {
+  gp <- read.table(path, header = FALSE, sep = "\t") %>% 
+    select(-V1) %>% # remove empty first column
+    mutate(V2=V2/60) # change time from minutes to hours
+  names(gp) <- c("Time", # add column names
+                 "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", 
+                 "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", 
+                 "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", 
+                 "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", 
+                 "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", 
+                 "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", 
+                 "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G11", "G12", 
+                 "H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "H11", "H12")
+  # import metadata
+  df.names <- read.table("DATA/GrowthProfiler/Metadata_Growthprofiler_CC.tsv", 
+                       header = TRUE, sep = "\t") # position H6-H12 are empty media controls.
+  # import the full species table
+  df.species <- read.table("DATA/Species_blast.tsv",
+                       header = TRUE, sep = "\t") 
+  df <- df.names %>% 
+    left_join(., df.species, by="Strain.ID") %>% 
+    select(Position, Strain.ID, Species)
+  
+  gp.melt <- gp %>% 
+  pivot_longer(
+      cols = -Time,              # everything except "Time"
+      names_to = "Position",
+      values_to = "Green.value"
+    ) %>%
+  left_join(., df, by="Position") %>%
+    mutate(Environment=env,
+           GP.position=pos ) %>% 
+  group_by(Strain.ID)
+  return(gp.melt)
+}
+
+# Import growth profiler data
+gp2 <- import.gp.curves("DATA/GrowthProfiler/250416_GP1_HoneyCC_YPDF2-2.txt", "YPDF, 2% 2%", 1)
+gp3 <- import.gp.curves("DATA/GrowthProfiler/250416_GP2_HoneyCC_YPDF2-2.txt", "YPDF, 2% 2%", 2)
+gp4 <- import.gp.curves("DATA/GrowthProfiler/250416_GP3_HoneyCC_YPDF2-2.txt", "YPDF, 2% 2%", 3)
+gp6 <- import.gp.curves("DATA/GrowthProfiler/250416_GP4_HoneyCC_YPDF10-10.txt", "YPDF, 10% 10%", 4)
+gp7 <- import.gp.curves("DATA/GrowthProfiler/250416_GP5_HoneyCC_YPDF10-10.txt", "YPDF, 10% 10%", 5)
+gp8 <- import.gp.curves("DATA/GrowthProfiler/250416_GP6_HoneyCC_YPDF10-10.txt", "YPDF, 10% 10%", 6)
+
+# combine all df:s
+gp <- do.call("rbind", list(gp2, gp3, gp4, gp6, gp7, gp8)) %>% 
+  filter(!Position %in% c("H6", "H7", "H8", "H9", "H10", "H11", "H12")) # remove empty positions
+
+gp <- do.call("rbind", list(gp4, gp8)) %>% 
+  filter(!Position %in% c("H6", "H7", "H8", "H9", "H10", "H11", "H12")) # remove empty positions
+
+
+# remove temp df:s
+rm(gp2, gp3, gp4, gp6, gp7, gp8)
+
+
+# Caluculate mean values
+gp.mean <- gp %>% 
+  select(-Position, -GP.position) %>% # remove position
+  group_by(Species, Strain.ID, Time, Environment) %>%   
+  summarise_all(list(mean = ~mean(., na.rm = TRUE),
+                     median = ~median(., na.rm = TRUE),
+                     sd = ~sd(., na.rm = TRUE),
+                     se = ~sd(., na.rm = TRUE)/sqrt(sum(!is.na(.)))
+                     ))
+
+```
+
+#### Fig 5A extended (supplementary)
+```{r}
+
+library(tidyverse)
+library(ggnewscale)
+
+# Add time-zero measurements to HPLC data
+start_points_2 <- hplc.2 %>%
+  group_by(Strain.ID) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate(
+    Sample.timepoint.hours = 0,
+    Glucose_pct_reduction = 0,
+    Fructose_pct_reduction = 0
+  )
+
+start_points_10 <- hplc.10 %>%
+  group_by(Strain.ID) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate(
+    Sample.timepoint.hours = 0,
+    Glucose_pct_reduction = 0,
+    Fructose_pct_reduction = 0
+  )
+
+hplc.2_augmented <- bind_rows(hplc.2, start_points_2) %>%
+  filter(!is.na(Strain.ID))
+
+hplc.10_augmented <- bind_rows(hplc.10, start_points_10) %>%
+  filter(!is.na(Strain.ID))
+
+
+# HPLC data: convert % reduction to % remaining
+hplc_plot_data <- bind_rows(
+  hplc.2_augmented %>% 
+    pivot_longer(
+      cols = c(Glucose_pct_reduction, Fructose_pct_reduction),
+      names_to = "Sugar",
+      values_to = "Reduction"
+    ) %>%
+    mutate(
+      group_label = if_else(
+        Sugar == "Glucose_pct_reduction",
+        "Glucose (2%)",
+        "Fructose (2%)"
+      )
+    ),
+  
+  hplc.10_augmented %>% 
+    pivot_longer(
+      cols = c(Glucose_pct_reduction, Fructose_pct_reduction),
+      names_to = "Sugar",
+      values_to = "Reduction"
+    ) %>%
+    mutate(
+      group_label = if_else(
+        Sugar == "Glucose_pct_reduction",
+        "Glucose (10%)",
+        "Fructose (10%)"
+      )
+    )
+) %>%
+  mutate(
+    Remaining = 100 - Reduction
+  )
+
+# Growth data: classify runs as 2% or 10%
+gp_plot_data <- gp %>% 
+  filter(Strain.ID != "Blank") %>% 
+  mutate(
+    Strain.ID2 = paste("HONEY", Strain.ID, "rep", Position, Environment, GP.position, sep = ""),
+    conc_group = case_when(
+      str_detect(Environment, "10%") ~ "10%",
+      str_detect(Environment, "2%")  ~ "2%",
+      TRUE ~ "Other"
+    )
+  )
+
+ggplot() + 
+  # HPLC sugar trajectories
+  geom_line(
+    data = hplc_plot_data,
+    aes(
+      x = Sample.timepoint.hours,
+      y = Remaining,
+      color = group_label,
+      group = interaction(Strain.ID, group_label)
+    ),
+    linewidth = 0.7
+  ) +
+  geom_point(
+    data = hplc_plot_data,
+    aes(
+      x = Sample.timepoint.hours,
+      y = Remaining,
+      color = group_label,
+      shape = group_label,
+      group = interaction(Strain.ID, group_label)
+    ),
+    size = 1.8
+  ) +
+  scale_color_manual(
+    values = c(
+      "Glucose (2%)"   = "#4e79a7",
+      "Fructose (2%)"  = "#c23b3b",
+      "Glucose (10%)"  = "#2c3e50",
+      "Fructose (10%)" = "#7a1e1e"
+    ),
+    name = "Sugar & concentration"
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Glucose (2%)"   = 16,
+      "Fructose (2%)"  = 16,
+      "Glucose (10%)"  = 17,
+      "Fructose (10%)" = 17
+    ),
+    name = "Sugar & concentration"
+  ) +
+
+  ggnewscale::new_scale_color() +
+
+  # Growth curves drawn on top
+  geom_line(
+    data = gp_plot_data,
+    aes(
+      x = Time,
+      y = Green.value,
+      group = Strain.ID2,
+      color = conc_group
+    ),
+    alpha = 0.8,
+    linewidth = 0.9
+  ) +
+  scale_color_manual(
+    values = c(
+      "2%" = "#9CC4C4",
+      "10%" = "#3C7A7A",
+      # "2%" = "#7FCDBB", # other color options
+      # "10%" = "#1D7874",
+      "Other" = "gray70"
+    ),
+    name = "Growth medium"
+  ) +
+
+  xlab("Time (hours)") +
+  ylab("Green values / % sugar remaining") +
+  facet_wrap(
+    ~paste(Species, " (", Strain.ID, ")", sep = ""),
+    labeller = label_wrap_gen(width = 20)
+  ) +
+  scale_x_continuous(breaks = seq(0, 144, by = 12)) +
+  theme_karl +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 24),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold.italic", size = 7),
+    axis.text = element_text(size = 8),
+    axis.line = element_line(colour = "gray15", linewidth = 0.6),
+    axis.ticks = element_line(colour = "gray15", linewidth = 0.6),
+    axis.ticks.length = unit(.15, "cm"),
+    legend.position = "top",
+    legend.title = element_text(size = 9, face = "bold"),
+    legend.text = element_text(face = "italic", size = 8)
+  )
+
+ggsave("PLOTS/FigS5_TimeResolvedSugar_growthcurves_all.pdf", width = 15, height= 12)
+
+
+```
+
+#### Fig 5A selection
+
+```{r}
+
+
+library(tidyverse)
+library(ggnewscale)
+
+strain_selection <- c(1202, 1147, 1133, 1879) # optional to change these
+
+# HPLC data: convert % reduction to % remaining
+hplc_plot_data <- bind_rows(
+  hplc.2_augmented %>% 
+    filter(Strain.ID %in% strain_selection) %>%
+    pivot_longer(
+      cols = c(Glucose_pct_reduction, Fructose_pct_reduction),
+      names_to = "Sugar",
+      values_to = "Reduction"
+    ) %>%
+    mutate(
+      group_label = if_else(
+        Sugar == "Glucose_pct_reduction",
+        "Glucose (2%)",
+        "Fructose (2%)"
+      )
+    ),
+  
+  hplc.10_augmented %>% 
+    filter(Strain.ID %in% strain_selection) %>%
+    pivot_longer(
+      cols = c(Glucose_pct_reduction, Fructose_pct_reduction),
+      names_to = "Sugar",
+      values_to = "Reduction"
+    ) %>%
+    mutate(
+      group_label = if_else(
+        Sugar == "Glucose_pct_reduction",
+        "Glucose (10%)",
+        "Fructose (10%)"
+      )
+    )
+) %>%
+  mutate(Remaining = 100 - Reduction)
+
+# Growth data: classify runs as 2% or 10%
+gp_plot_data <- gp %>% 
+  filter(
+    Strain.ID != "Blank",
+    Strain.ID %in% strain_selection
+  ) %>%
+  mutate(
+    Strain.ID2 = paste("HONEY", Strain.ID, "rep", Position, Environment, GP.position, sep = ""),
+    conc_group = case_when(
+      str_detect(Environment, "10%") ~ "10%",
+      str_detect(Environment, "2%")  ~ "2%",
+      TRUE ~ "Other"
+    )
+  )
+
+ggplot() + 
+  # HPLC sugar trajectories
+  geom_line(
+    data = hplc_plot_data,
+    aes(
+      x = Sample.timepoint.hours,
+      y = Remaining,
+      color = group_label,
+      group = interaction(Strain.ID, group_label)
+    ),
+    linewidth = 0.7
+  ) +
+  geom_point(
+    data = hplc_plot_data,
+    aes(
+      x = Sample.timepoint.hours,
+      y = Remaining,
+      color = group_label,
+      shape = group_label,
+      group = interaction(Strain.ID, group_label)
+    ),
+    size = 1.8
+  ) +
+  scale_color_manual(
+    values = c(
+      "Glucose (2%)"   = "#4e79a7",
+      "Fructose (2%)"  = "#c23b3b",
+      "Glucose (10%)"  = "#2c3e50",
+      "Fructose (10%)" = "#7a1e1e"
+    ),
+    name = "Sugar & concentration"
+  ) +
+  scale_shape_manual(
+    values = c(
+      "Glucose (2%)"   = 16,
+      "Fructose (2%)"  = 16,
+      "Glucose (10%)"  = 17,
+      "Fructose (10%)" = 17
+    ),
+    name = "Sugar & concentration"
+  ) +
+
+  ggnewscale::new_scale_color() +
+
+  # Growth curves drawn on top
+  geom_line(
+    data = gp_plot_data,
+    aes(
+      x = Time,
+      y = Green.value,
+      group = Strain.ID2,
+      color = conc_group
+    ),
+    alpha = 0.8,
+    linewidth = 0.9
+  ) +
+  scale_color_manual(
+    values = c(
+      "2%" = "#9CC4C4",
+      "10%" = "#3C7A7A",
+      # "2%" = "#7FCDBB", # other color options
+      # "10%" = "#1D7874",
+      "Other" = "gray70"
+    ),
+    name = "Growth medium"
+  ) +
+
+  xlab("Time (hours)") +
+  ylab("Green values / % sugar remaining") +
+  facet_wrap(
+    ~paste(Species, " (", Strain.ID, ")", sep = ""),
+    labeller = label_wrap_gen(width = 20)
+  ) +
+  scale_x_continuous(breaks = seq(0, 144, by = 12)) +
+  theme_karl +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 24),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold.italic", size = 7),
+    axis.text = element_text(size = 8),
+    axis.line = element_line(colour = "gray15", linewidth = 0.6),
+    axis.ticks = element_line(colour = "gray15", linewidth = 0.6),
+    axis.ticks.length = unit(.15, "cm"),
+    legend.position = "right",
+    legend.title = element_text(size = 9, face = "bold"),
+    legend.text = element_text(face = "italic", size = 8)
+  )
+
+ggsave("PLOTS/Fig5A_timeresolved_growth_&_sugarlevels.pdf", width = 8, height = 5)
+
+```
+
+### Fig 6D heatmap
+```{r}
+
+library(tidyverse)
+library(ComplexHeatmap)
+library(circlize)
+library(viridis)
+
+data <- read.delim(
+  "DATA/HoneyVocsOAVCalculation.txt",
+  header = TRUE,
+  sep = "\t",
+  stringsAsFactors = FALSE
+)
+
+# Log transform quantity
+data <- data %>%
+  mutate(logQuantity = log10(Quantity_uLng + 1))
+
+heat_data <- data %>%
+  group_by(VOC, Sample) %>%
+  summarise(
+    logQuantity = mean(logQuantity, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = Sample,
+    values_from = logQuantity,
+    values_fill = 0
+  ) %>%
+  as.data.frame()
+
+rownames(heat_data) <- heat_data$VOC
+heat_data$VOC <- NULL
+
+heat_matrix <- as.matrix(heat_data)
+
+# Match sample order used in radar plots
+sample_order <- c(
+  "Control",
+  "Metschnikowia anglica",
+  "Zygosaccharomyces siamensis",
+  "Starmerella magnoliae"
+  
+)
+
+heat_matrix <- heat_matrix[, sample_order]
+
+# Row-wise Z-score scaling
+heat_matrix_scaled <- t(scale(t(heat_matrix)))
+
+# Colour scale
+col_fun <- colorRamp2(
+  c(-2, 0, 2),
+  c("#2C7F7B", "white", "#C58B39")
+)
+
+pdf(
+  "PLOTS/Fig6_VOC_heatmap.pdf",
+  width = 6,
+  height = 8
+)
+
+draw(
+  Heatmap(
+    heat_matrix_scaled,
+    name = "Z-score",
+    col = col_fun,
+    cluster_rows = TRUE,
+    cluster_columns = FALSE,
+    show_row_names = TRUE,
+    row_names_side = "left",
+    row_names_gp = grid::gpar(fontsize = 10),
+    show_column_names = TRUE,
+    column_names_rot = 45,
+    row_title = "VOCs"
+  )
+)
+
+dev.off()
+
+
+```
+
+### Fig 6E OAV radar plots
+```{r}
+
+library(tidyverse)
+library(fmsb)
+
+# Read data
+data <- read.table(
+  "DATA/HoneyVocsOAVCalculation.txt",
+  header = TRUE,
+  sep = "\t",
+  stringsAsFactors = FALSE
+)
+
+
+agg_data <- data %>%
+  group_by(Sample, Aroma) %>%
+  summarise(
+    Total_OAV = sum(OAV, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Total_logOAV = log10(Total_OAV)
+  )
+
+wide_df <- agg_data %>%
+  select(Sample, Aroma, Total_logOAV) %>%
+  pivot_wider(
+    names_from = Aroma,
+    values_from = Total_logOAV,
+    values_fill = 0
+  ) %>%
+  as.data.frame()
+
+# Store sample names as row names
+sample_names <- wide_df$Sample
+wide_df$Sample <- NULL
+
+# Ensure all aroma columns are numeric
+wide_df[] <- lapply(
+  wide_df,
+  function(x) as.numeric(as.character(x))
+)
+
+rownames(wide_df) <- sample_names
+
+# Sort aroma categories alphabetically
+wide_df <- wide_df[, sort(colnames(wide_df))]
+
+
+# Same maximum for all panels so the plots are directly comparable
+max_val <- max(wide_df, na.rm = TRUE)
+
+
+sample_colors <- c(
+  "Metschnikowia anglica" = "#F8B74C",
+  "Zygosaccharomyces siamensis" = "#009EB6",
+  "Starmerella magnoliae" = "#ADEAAD"
+)
+
+# Control will be plotted as the common background profile
+samples_to_plot <- names(sample_colors)
+
+
+pdf(
+  "PLOTS/Fig6_Aroma_Radar_Plots.pdf",
+  width = 12,
+  height = 4.5
+)
+
+par(
+  mfrow = c(1, 3),
+  mar = c(2, 2, 3, 2),
+  xpd = NA
+)
+
+for (sample in samples_to_plot) {
+
+  # Data for one panel:
+  # 1 = maximum
+  # 2 = minimum
+  # 3 = Control
+  # 4 = yeast strain
+  plot_data <- rbind(
+    max = rep(max_val, ncol(wide_df)),
+    min = rep(0, ncol(wide_df)),
+    Control = wide_df["Control", ],
+    Yeast = wide_df[sample, ]
+  )
+
+  yeast_col <- sample_colors[sample]
+
+  radarchart(
+    plot_data,
+
+    # No numerical axis labels
+    axistype = 0,
+
+    # Control first, yeast second
+    pcol = c(
+      "grey75",
+      yeast_col
+    ),
+
+    # Transparent fills
+    pfcol = c(
+      adjustcolor("grey60", alpha.f = 0.20),
+      adjustcolor(yeast_col, alpha.f = 0.35)
+    ),
+
+    # Line widths
+    plwd = c(2, 3),
+    
+    # Remove the ponts
+    pty = NA,
+
+    # Solid lines
+    plty = c(1, 1),
+
+    # Grid appearance
+    cglcol = "grey85",
+    cglty = 1,
+    cglwd = 0.8,
+
+    # Hide numerical scale labels
+    axislabcol = NA,
+    caxislabels = rep("", 5),
+
+    # Aroma-category label size
+    vlcex = 1.1,
+
+    # Panel title
+    title = sample
+  )
+}
+
+dev.off()
+
+```
+
+### Fig 6A fermentation
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(ComplexHeatmap)
+library(circlize)
+library(colorspace)
+
+# load the data
+df.ferm <- read.table("DATA/honey_fermentation_test_60-90.tsv", header = TRUE, sep = "\t") %>% 
+  left_join(df.species %>% select(Strain.ID, Species), by = "Strain.ID") %>% 
+  # select(-c(Day0)) %>% # Remove day 0
+  pivot_longer(
+    cols = starts_with("Day"),
+    names_to = "Days",
+    values_to = "value"
+  ) %>%
+  mutate(Days = readr::parse_number(Days))
+
+
+# Collapse replicates using max (logical OR)
+df.any <- df.ferm %>%
+  group_by(Strain.ID, Species, Honey.conc, Days) %>%
+  summarise(value = max(value, na.rm = TRUE), .groups = "drop") %>%
+  mutate(row_id = paste(Strain.ID, Honey.conc, sep = "_")) %>%
+  pivot_wider(names_from = Days, values_from = value) %>%
+  arrange(Honey.conc, Species, Strain.ID)
+
+# Build matrix
+mat <- df.any %>%
+  select(-row_id, -Strain.ID, -Species, -Honey.conc) %>%
+  as.matrix()
+
+rownames(mat) <- df.any$row_id
+
+# Ensure correct day order
+mat <- mat[, order(as.numeric(colnames(mat))), drop = FALSE]
+
+# Define annotation color mappings
+species_levels <- unique(df.any$Species)
+honey_levels <- sort(unique(df.any$Honey.conc))
+
+species_cols <- setNames(
+  hcl.colors(length(species_levels), palette = "Fall"),
+  species_levels
+)
+
+honey_cols <- setNames(
+  rev(sequential_hcl(length(honey_levels), palette = "YlOrBr")),
+  as.character(honey_levels)
+)
+
+# Separate row annotations
+left_ha <- rowAnnotation(
+  Honey = as.factor(df.any$Honey.conc),
+  col = list(
+    Honey = honey_cols
+  )
+)
+
+right_ha <- rowAnnotation(
+  Species = df.any$Species,
+  col = list(
+    Species = species_cols
+  )
+)
+
+# Heatmap
+ht <- Heatmap(
+  mat,
+  name = "Fermentation detected",
+  col = c("0" = "grey95", "1" = "#355C7D"),
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  rect_gp = grid::gpar(col = "grey85"),
+  row_split = as.factor(df.any$Honey.conc),
+  left_annotation = left_ha,
+  right_annotation = right_ha,
+  column_title = "Days",
+  column_names_side = "top",
+  column_names_rot = 0,
+  show_row_names = FALSE,
+  heatmap_legend_param = list(
+    at = c(0, 1),
+    labels = c("No", "Yes")
+  ),
+  na_col = "grey95"
+)
+
+
+pdf("PLOTS/Fig6_fermentation.pdf", width = 6, height = 8)
+
+draw(ht)
+
+dev.off()
+
+```
+
+#### Fig6B PCA
+```{r}
+
+DATA    <- "DATA/honey_lcms_feature_table.csv"
+OUT_DIR <- "."
+
+#analysis settings
+MIN_DETECTED <- 3        
+                         
+SCALING      <- "pareto" 
+N_PERM       <- 9999     
+SEED         <- 23
+
+GROUPS <- list(
+  "Honey (control)"  = c("H1", "H2", "H3"),
+  "M. anglica"       = c("7781",  "7782",  "7783"),
+  "Z. siamensis"     = c("12021", "12022", "12023"),
+  "E. paramagnoliae" = c("11471", "11472", "11473")
+)
+
+GCOL <- c("Honey (control)" = "#7F8486", "M. anglica"       = "#E69F00",
+          "Z. siamensis"    = "#0072B2", "E. paramagnoliae" = "#009E73")
+GPCH <- c("Honey (control)" = 21, "M. anglica" = 24,
+          "Z. siamensis"    = 22, "E. paramagnoliae" = 23)
+
+SAMPLES <- unlist(GROUPS, use.names = FALSE)
+GLAB    <- rep(names(GROUPS), lengths(GROUPS))
+
+ft <- read.csv(DATA, check.names = FALSE, stringsAsFactors = FALSE,
+               na.strings = c("NA", ""))
+stopifnot(all(SAMPLES %in% names(ft)))
+ft <- ft[as.logical(ft$curated) %in% TRUE, ]
+message(sprintf("curated features: %d", nrow(ft)))
+
+X <- as.matrix(ft[, SAMPLES]); storage.mode(X) <- "double"
+X[!is.finite(X) | X <= 0] <- NA
+X <- X[rowSums(!is.na(X)) >= MIN_DETECTED, , drop = FALSE]
+n_imp <- sum(is.na(X))
+if (n_imp) {                                   # half the feature's own minimum
+  fmin <- apply(X, 1, min, na.rm = TRUE)
+  X[is.na(X)] <- fmin[row(X)[is.na(X)]] / 2
+}
+message(sprintf("features entering the PCA: %d (%d imputed cells)", nrow(X), n_imp))
+
+A <- t(log2(X))                                # samples in rows
+A <- scale(A, center = TRUE, scale = FALSE)
+if (SCALING != "none") {
+  sdv <- apply(A, 2, stats::sd); sdv[sdv == 0 | is.na(sdv)] <- 1
+  A <- sweep(A, 2, if (SCALING == "uv") sdv else sqrt(sdv), "/")
+}
+A[is.na(A)] <- 0
+
+
+
+
+# PCA
+pc  <- stats::prcomp(A, center = FALSE, scale. = FALSE)
+var <- 100 * pc$sdev^2 / sum(pc$sdev^2)
+sc  <- pc$x[, 1:2]
+message(sprintf("PC1 %.1f %%   PC2 %.1f %%", var[1], var[2]))
+utils::write.csv(data.frame(sample = rownames(sc), group = GLAB,
+                            PC1 = sc[, 1], PC2 = sc[, 2]),
+                 file.path(OUT_DIR, "Fig6B_PCA_scores.csv"), row.names = FALSE)
+
+
+
+# PERMANOVA on Euclidean distances
+D <- as.matrix(stats::dist(A))^2
+N <- nrow(A); a <- length(GROUPS)
+Fstat <- function(g) {
+  tot <- sum(D) / (2 * N)
+  wit <- sum(vapply(unique(g), function(k) {
+    i <- which(g == k); sum(D[i, i]) / (2 * length(i)) }, numeric(1)))
+  c(F = ((tot - wit) / (a - 1)) / (wit / (N - a)), R2 = (tot - wit) / tot)
+}
+obs <- Fstat(GLAB)
+set.seed(SEED)
+nullF <- replicate(N_PERM, Fstat(sample(GLAB))["F"])
+p_man <- (1 + sum(nullF >= obs["F"])) / (N_PERM + 1)
+message(sprintf("PERMANOVA  F = %.2f  R2 = %.3f  p = %.4f  (%d permutations)",
+                obs["F"], obs["R2"], p_man, N_PERM))
+
+
+
+
+# PERMDISP
+g   <- factor(GLAB, levels = names(GROUPS))
+cen <- t(sapply(levels(g), function(k) colMeans(A[g == k, , drop = FALSE])))
+d2c <- sqrt(rowSums((A - cen[as.character(g), ])^2))
+Fd  <- function(y, gr) stats::anova(stats::lm(y ~ gr))[1, "F value"]
+f0  <- Fd(d2c, g)
+set.seed(SEED)
+p_disp <- (1 + sum(replicate(N_PERM, Fd(d2c, sample(g))) >= f0)) / (N_PERM + 1)
+message(sprintf("PERMDISP   F = %.2f  p = %.3f  (homogeneous if p > 0.05)", f0, p_disp))
+
+# figure
+draw <- function() {
+  op <- par(mar = c(4.2, 4.4, 1.0, 1.0), las = 1, cex.axis = .85, cex.lab = .95,
+            tcl = -.25, mgp = c(2.6, .6, 0))
+  on.exit(par(op))
+  r <- function(v) range(v) + c(-1, 1) * diff(range(v)) * .14
+  plot(NA, xlim = r(sc[, 1]), ylim = r(sc[, 2]), axes = FALSE,
+       xlab = sprintf("PC1 (%.1f %%)", var[1]),
+       ylab = sprintf("PC2 (%.1f %%)", var[2]))
+  axis(1, lwd = 0, lwd.ticks = 1.4); axis(2, lwd = 0, lwd.ticks = 1.4)
+  abline(h = 0, v = 0, col = "#EBEEEE", lwd = 1.1)
+  for (k in names(GROUPS)) {                   # convex hull per treatment
+    i <- which(GLAB == k); h <- grDevices::chull(sc[i, ])
+    polygon(sc[i[h], 1], sc[i[h], 2],
+            col = grDevices::adjustcolor(GCOL[k], alpha.f = .15),
+            border = GCOL[k], lwd = 1.6)
+  }
+  points(sc[, 1], sc[, 2], pch = GPCH[GLAB], bg = GCOL[GLAB],
+         col = "white", cex = 1.5, lwd = 1.1)
+  legend("topleft", legend = names(GROUPS), pch = GPCH[names(GROUPS)],
+         pt.bg = GCOL[names(GROUPS)], col = "white", pt.cex = 1.4, pt.lwd = 1.1,
+         bty = "n", cex = .8, text.font = c(1, 3, 3, 3), y.intersp = 1.25)
+  box(bty = "l", lwd = 1.2)
+}
+
+
+# Open PDF device
+pdf("PLOTS/Fig6B_PCA.pdf", width = 5.6, height = 5)
+
+# Draw the plot
+draw()
+
+# Close and save the PDF
+dev.off()
+
+
+
+```
+
+
+### Fig6C CANOPUS_composition
+```{r}
+
+DATA    <- "DATA/honey_lcms_feature_table.csv"
+OUT_DIR <- "."
+
+PATHWAY_PROB_MIN <- 0.5
+
+GROUPS <- list(
+  "Honey (control)"  = c("H1", "H2", "H3"),
+  "M. anglica"       = c("7781",  "7782",  "7783"),
+  "Z. siamensis"     = c("12021", "12022", "12023"),
+  "E. paramagnoliae" = c("11471", "11472", "11473")
+)
+
+PCOL <- c("Amino acids and Peptides"        = "#A05195",
+          "Alkaloids"                       = "#56B4E9",
+          "Fatty acids"                     = "#D55E00",
+          "Carbohydrates"                   = "#5F9E3E",
+          "Terpenoids"                      = "#117733",
+          "Polyketides"                     = "#CC6677",
+          "Shikimates and Phenylpropanoids" = "#DDAA33")
+SAMPLES <- unlist(GROUPS, use.names = FALSE)
+
+# data 
+ft <- read.csv(DATA, check.names = FALSE, stringsAsFactors = FALSE,
+               na.strings = c("NA", ""))
+stopifnot(all(SAMPLES %in% names(ft)))
+ft <- ft[as.logical(ft$curated) %in% TRUE, ]
+
+ann <- ft[!is.na(ft$CANOPUS_pathway) &
+          !is.na(ft$CANOPUS_pathway_prob) &
+          ft$CANOPUS_pathway_prob > PATHWAY_PROB_MIN, ]
+message(sprintf("curated %d | pathway call %d | above p > %.2f: %d (%.0f %% of curated)",
+                nrow(ft), sum(!is.na(ft$CANOPUS_pathway)), PATHWAY_PROB_MIN,
+                nrow(ann), 100 * nrow(ann) / nrow(ft)))
+
+cat("\n--- superclass composition of each pathway ---\n")
+for (p in sort(unique(ann$CANOPUS_pathway))) {
+  s <- sort(table(ann$CANOPUS_superclass[ann$CANOPUS_pathway == p]), decreasing = TRUE)
+  cat(sprintf("\n%s  (n = %d)\n", p, sum(ann$CANOPUS_pathway == p)))
+  print(utils::head(s, 5))
+}
+
+X <- as.matrix(ann[, SAMPLES]); storage.mode(X) <- "double"
+X[!is.finite(X)] <- 0
+sh <- rowsum(X, ann$CANOPUS_pathway)                 # pathway x sample
+sh <- sweep(sh, 2, colSums(sh), "/") * 100           # per-sample percentages
+gm <- sapply(GROUPS, function(cs) rowMeans(sh[, cs, drop = FALSE]))
+ord <- rownames(gm)[order(rowMeans(gm), decreasing = TRUE)]
+sh  <- sh[ord, , drop = FALSE]; gm <- gm[ord, , drop = FALSE]
+
+cat("\n--- group mean share of annotated signal (%) ---\n"); print(round(gm, 1))
+cat("\n--- SD among the three honey control replicates (percentage points) ---\n")
+print(round(apply(sh[, GROUPS[["Honey (control)"]], drop = FALSE], 1, stats::sd), 2))
+utils::write.csv(data.frame(pathway = ord, round(sh, 3), check.names = FALSE),
+                 file.path(OUT_DIR, "Fig6C_pathway_shares.csv"), row.names = FALSE)
+
+# figure 
+cols_p <- ifelse(ord %in% names(PCOL), PCOL[ord], "#8C8C8C"); names(cols_p) <- ord
+draw <- function() {
+  graphics::layout(matrix(1:2, 2, 1), heights = c(4.0, 1.25))
+  op <- par(mar = c(4.0, 9.2, 1.0, 1.0), las = 1, xpd = NA, cex.axis = .8,
+            cex.lab = .9, tcl = -.25, mgp = c(2.5, .55, 0))
+  on.exit({ par(op); graphics::layout(1) })
+
+  gr <- rev(names(GROUPS))
+  plot(NA, xlim = c(0, 100), ylim = c(.4, length(gr) + .6), axes = FALSE,
+       xlab = "share of annotated signal (%)", ylab = "")
+  axis(1, at = seq(0, 100, 20), lwd = 0, lwd.ticks = 1.4)
+  par(xpd = FALSE); abline(v = seq(0, 100, 20), col = "#EBEEEE", lwd = 1.1); par(xpd = NA)
+  for (k in seq_along(gr)) {
+    left <- 0
+    for (p in ord) {
+      v <- gm[p, gr[k]]
+      rect(left, k - .3, left + v, k + .3, col = cols_p[p], border = "white", lwd = 2.0)
+      if (v >= 5) text(left + v / 2, k, sprintf("%.0f", v), col = "white",
+                       cex = .68, font = 2)
+      left <- left + v
+    }
+    text(-2, k, sub(" \\(control\\)", "", gr[k]), adj = 1, cex = .85,
+         font = if (grepl("\\.", gr[k])) 3 else 1)
+  }
+
+  par(mar = c(0, 1, 0, 1))
+  plot.new(); plot.window(c(0, 1), c(0, 1))
+  legend(0.02, 0.95, legend = ord, fill = cols_p[ord], border = "white",
+         bty = "n", cex = .72, ncol = 3, x.intersp = .5, y.intersp = 1.25,
+         title = "CANOPUS pathway", title.adj = 0, title.cex = .75)
+}
+
+
+# Open PDF device
+pdf("PLOTS/Fig6C_CANOPUS.pdf", width = 6, height = 5)
+
+# Draw the plot
+draw()
+
+# Close and save the PDF
+dev.off()
+
+
+```
+

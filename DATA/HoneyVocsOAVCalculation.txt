@@ -1,0 +1,41 @@
+Sample	VOC	Quantity_uLng	Concentration ng_mL	Odor Threshold mg_m3	logOAV	OAV	Aroma
+Control	1-butanol- 2&3-methyl	18	1.062195515	0.1400	3.8801	7587.110714	Alcoholic
+Control	benzaldehyde	82	4.839295545	0.5000	3.9858	9678.591	Almond
+Control	Benzeneacetaldehyde	81	4.743958454	0.0040	6.0741	1185989.625	Almond
+Control	Benzyl alcohol	23	1.376187927	0.6200	3.3463	2219.657903	Floral
+Control	DMDS	14	0.804083799	1000.0000	-0.0947	0.8040838	Sweet
+Control	DMTS	10	0.559432398	1000.0000	-0.2523	0.5594324	Sweet
+Control	Furfural	26	1.516447117	1.0000	3.1808	1516.4471	Almond
+Control	Linalool	23	1.365936335	0.0024	5.7552	569140.125	Floral
+Control	Nonanal	36	2.100271235	0.0450	4.6691	46672.69333	Floral
+Control	Octane	87	5.106815884	61.8000	1.9172	82.63456149	Fuel-like
+Control	Phenylethyl alcohol	31	1.820704595	0.0120	5.1811	151725.3833	Floral
+Control	Styren	10	0.561417454	0.1500	3.5732	3742.783333	Sweet
+Control	tri-methyl bensene	9	0.5528518	0.2000	3.4416	2764.259	Fuel-like
+Metschnikowia anglica	1-butanol- 2&3-methyl	324	19.03629586	0.1400	5.1335	135973.5421	Alcoholic
+Metschnikowia anglica	1-Pentanol, 3-methyl-	164	9.667359798	0.0075	6.1102	1288981.307	Alcoholic
+Metschnikowia anglica	1-Propanol, 2-methyl-	40	2.380955868	5.4000	2.6444	440.9177593	Alcoholic
+Metschnikowia anglica	Benzeneacetaldehyde	88	5.19609517	0.0040	6.1136	1299023.8	Almond
+Metschnikowia anglica	Benzyl alcohol	11	0.641606675	0.6200	3.0149	1034.849516	Floral
+Metschnikowia anglica	Phenylethyl alcohol	706	41.52527502	0.0120	6.5391	3460439.583	Floral
+Metschnikowia anglica	Propanoic acid, 2-methyl-	32	1.883931701	0.4000	3.6730	4709.82925	Acetic
+Metschnikowia anglica	tri-methyl bensene	10	0.598974713	0.2000	3.4764	2994.8735	Fuel-like
+Starmerella magnoliae	1-butanol- 2&3-methyl	5167	303.968315	0.1400	6.3367	2171202.25	Alcoholic
+Starmerella magnoliae	1-Hexanol, 4-methyl-	31	1.803558383	1000.0000	0.2561	1.8035584	Sweet
+Starmerella magnoliae	1-Pentanol, 3-methyl-	374	21.99369373	0.0075	6.4672	2932492.493	Alcoholic
+Starmerella magnoliae	1-propanol	109	6.4084968	6.0000	3.0286	1068.0828	Alcoholic
+Starmerella magnoliae	1-Propanol, 2-methyl-	1408	82.83080296	5.4000	4.1858	15339.03759	Alcoholic
+Starmerella magnoliae	Benzyl alcohol	61	3.565968274	0.6200	3.7598	5751.561774	Floral
+Starmerella magnoliae	DMDS	6	0.368050411	1000.0000	-0.4341	0.3680504	Sweet
+Starmerella magnoliae	Ethyl acetate	55	3.240531758	2.2000	3.1682	1472.969	Fruity
+Starmerella magnoliae	Linalool	25	1.489845085	0.0024	5.7929	620768.7917	Floral
+Starmerella magnoliae	Phenylethyl alcohol	3223	189.5925613	0.0120	7.1986	15799380.11	Floral
+Starmerella magnoliae	tri-methyl bensene	25	1.455847755	0.2000	3.8621	7279.239	Fuel-like
+Zygosaccharomyces siamensis	1-butanol- 2&3-methyl	72	4.24251142	0.1400	4.4815	30303.65286	Alcoholic
+Zygosaccharomyces siamensis	1-Pentanol, 3-methyl-	53	3.106066524	0.0075	5.6171	414142.2	Alcoholic
+Zygosaccharomyces siamensis	benzaldehyde	23	1.369420904	0.5000	3.4376	2738.8418	Almond
+Zygosaccharomyces siamensis	Benzeneacetaldehyde	69	4.038826312	0.0040	6.0042	1009706.575	Almond
+Zygosaccharomyces siamensis	Benzyl alcohol	7	0.401590104	0.6200	2.8114	647.7259677	Floral
+Zygosaccharomyces siamensis	Methyl Isobutyl Ketone	17	0.989585036	1.0000	2.9955	989.585	Fruity
+Zygosaccharomyces siamensis	Phenylethyl alcohol	51	2.999547335	0.0120	5.3979	249962.275	Floral
+Zygosaccharomyces siamensis	tri-methyl bensene	9	0.526560609	0.2000	3.4204	2632.803	Fuel-like
